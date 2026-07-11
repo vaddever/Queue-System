@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Now Serving — Queue Display</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  body{background:var(--navy);color:#fff;}
+  .dheader{display:flex;justify-content:space-between;align-items:center;padding:22px 36px;border-bottom:1px solid rgba(255,255,255,.1);}
+  .dheader h1{font-size:26px;}
+  .clock{font-size:22px;font-variant-numeric:tabular-nums;color:#a7f3d0;}
+  .dwrap{display:grid;grid-template-columns:2.2fr 1fr;gap:0;height:calc(100vh - 78px);}
+  .counters-col{padding:28px 36px;overflow:auto;}
+  .counter-card{background:rgba(255,255,255,.06);border-radius:16px;padding:22px 26px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;border-left:6px solid var(--teal);}
+  .counter-card.flash{animation:flash 1s ease-in-out 3;}
+  @keyframes flash{0%,100%{background:rgba(255,255,255,.06);}50%{background:rgba(13,148,136,.55);}}
+  .counter-card .cname{font-size:16px;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;}
+  .counter-card .ctoken{font-size:52px;font-weight:800;}
+  .counter-card .csvc{font-size:14px;color:#cbd5e1;margin-top:4px;}
+  .side-col{background:rgba(0,0,0,.2);padding:28px;display:flex;flex-direction:column;}
+  .side-col h2{font-size:15px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;margin-bottom:14px;}
+  .waiting-item{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.08);font-size:15px;}
+  .qr-box{margin-top:auto;background:#fff;border-radius:16px;padding:20px;text-align:center;}
+  .qr-box img{width:150px;height:150px;}
+  .qr-box p{color:var(--navy);font-weight:700;margin-top:8px;font-size:13px;}
+</style>
+</head>
+<body>
+<div class="dheader">
+  <h1 id="orgTitle">Queue Display</h1>
+  <div class="clock" id="clock">--:--:--</div>
+</div>
+<div class="dwrap">
+  <div class="counters-col" id="countersCol"><p class="muted">Loading…</p></div>
+  <div class="side-col">
+    <h2>Waiting Queue</h2>
+    <div id="waitingCol"></div>
+    <div class="qr-box">
+      <div id="qrcode"></div>
+      <p>Scan to take a token</p>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="firebase-config.js"></script>
+<script>
+setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-GB'); }, 1000);
+
+// QR points to the kiosk page — update this to your deployed kiosk URL
+const kioskUrl = window.location.href.replace('display.html','kiosk.html');
+new QRCode(document.getElementById('qrcode'), { text: kioskUrl, width:150, height:150, colorDark:'#0f2340' });
+
+db.collection('config').doc('settings').get().then(snap=>{
+  if(snap.exists && snap.data().orgName) document.getElementById('orgTitle').textContent = snap.data().orgName + ' — Now Serving';
+});
+
+let lastTokens = {};
+function beep(){
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = 880; g.gain.value = 0.15;
+    o.start(); setTimeout(()=>{o.stop(); ctx.close();}, 350);
+  }catch(e){}
+}
+
+db.collection('counters').orderBy('name').onSnapshot(snap => {
+  const counters = snap.docs.map(d=>({id:d.id,...d.data()}));
+  document.getElementById('countersCol').innerHTML = counters.map(c => {
+    const changed = lastTokens[c.id] !== undefined && lastTokens[c.id] !== c.currentToken && c.currentToken;
+    lastTokens[c.id] = c.currentToken;
+    if(changed) beep();
+    return `
+    <div class="counter-card ${changed?'flash':''}">
+      <div>
+        <div class="cname">${escapeHtml(c.name)}</div>
+        <div class="csvc">${escapeHtml(c.currentServiceName||'')}</div>
+      </div>
+      <div class="ctoken">${c.currentToken || '—'}</div>
+    </div>`;
+  }).join('') || '<p class="muted">No counters configured.</p>';
+});
+
+db.collection('tokens').where('status','==','waiting').orderBy('createdAt','asc').limit(15).onSnapshot(snap => {
+  const tokens = snap.docs.map(d=>d.data());
+  document.getElementById('waitingCol').innerHTML = tokens.map(t => `
+    <div class="waiting-item"><span>${t.prefix}${t.number}</span><span style="color:#94a3b8;">${escapeHtml(t.serviceName)}</span></div>
+  `).join('') || '<p class="muted">No one waiting.</p>';
+});
+
+function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+</script>
+</body>
+</html>

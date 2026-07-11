@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Counter — Queue System</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="topbar">
+  <div class="brand"><span class="dot"></span> Queue System — Counter</div>
+  <div class="user" id="whoami"></div>
+  <nav><button id="logoutBtn">Log Out</button></nav>
+</div>
+
+<div class="wrap">
+
+  <!-- Counter picker -->
+  <div class="card" id="pickerCard" style="max-width:420px;margin:0 auto 20px;">
+    <h3>Select Your Counter</h3>
+    <div class="field"><select id="counterSelect"></select></div>
+    <button class="btn btn-primary btn-block" onclick="chooseCounter()">Start Session</button>
+  </div>
+
+  <!-- Active session -->
+  <div id="sessionArea" style="display:none;">
+    <div class="grid g2" style="align-items:start;">
+      <div class="card">
+        <h3>Now Serving — <span id="activeCounterName"></span></h3>
+        <div class="center" style="padding:20px 0;">
+          <div style="font-size:56px;font-weight:800;color:var(--navy);" id="currentTokenDisplay">—</div>
+          <div class="muted" id="currentServiceDisplay">No token called</div>
+        </div>
+        <div class="field">
+          <label style="font-size:13px;color:var(--muted);font-weight:600;">Pull from service</label>
+          <select id="serviceFilter"><option value="">All Services</option></select>
+        </div>
+        <div class="grid g2" style="margin-top:14px;">
+          <button class="btn btn-primary btn-lg" id="callNextBtn" onclick="callNext()">Call Next</button>
+          <button class="btn btn-outline btn-lg" id="recallBtn" onclick="recall()" disabled>Recall</button>
+        </div>
+        <div class="grid g2" style="margin-top:10px;">
+          <button class="btn btn-navy" id="serveBtn" onclick="markServing()" disabled>Start Serving</button>
+          <button class="btn" style="background:var(--green);color:#fff;" id="completeBtn" onclick="completeToken()" disabled>Complete</button>
+        </div>
+        <button class="btn btn-red btn-block" style="margin-top:10px;" id="noshowBtn" onclick="noShow()" disabled>Mark No-Show</button>
+        <button class="btn btn-outline btn-block" style="margin-top:16px;" onclick="endSession()">End Session / Switch Counter</button>
+      </div>
+
+      <div class="card">
+        <h3>Waiting Queue</h3>
+        <div id="waitingList" style="max-height:480px;overflow:auto;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script>
+let currentUser=null, activeCounterId=null, activeCounterName='', activeToken=null;
+let servicesCache=[];
+
+auth.onAuthStateChanged(async (user)=>{
+  if(!user){ window.location.href='login.html'; return; }
+  const snap = await db.collection('users').doc(user.uid).get();
+  if(!snap.exists){ alert('No profile found.'); auth.signOut(); return; }
+  currentUser = {uid:user.uid, ...snap.data()};
+  document.getElementById('whoami').textContent = `${currentUser.name || currentUser.email}`;
+  await loadCounters();
+  await loadServices();
+  if(currentUser.counterId){
+    document.getElementById('counterSelect').value = currentUser.counterId;
+  }
+});
+document.getElementById('logoutBtn').addEventListener('click', ()=> auth.signOut().then(()=>window.location.href='login.html'));
+
+async function loadCounters(){
+  const snap = await db.collection('counters').where('active','==',true).get();
+  document.getElementById('counterSelect').innerHTML = snap.docs.map(d=>`<option value="${d.id}">${escapeHtml(d.data().name)}</option>`).join('');
+}
+async function loadServices(){
+  const snap = await db.collection('services').where('active','==',true).get();
+  servicesCache = snap.docs.map(d=>({id:d.id,...d.data()}));
+  document.getElementById('serviceFilter').innerHTML = '<option value="">All Services</option>' + servicesCache.map(s=>`<option value="${s.id}">${escapeHtml(s.nameEn)}</option>`).join('');
+}
+
+let waitingUnsub=null, counterUnsub=null;
+
+async function chooseCounter(){
+  activeCounterId = document.getElementById('counterSelect').value;
+  if(!activeCounterId){ showToast('No counter selected'); return; }
+  const cSnap = await db.collection('counters').doc(activeCounterId).get();
+  activeCounterName = cSnap.data().name;
+  document.getElementById('activeCounterName').textContent = activeCounterName;
+  document.getElementById('pickerCard').style.display='none';
+  document.getElementById('sessionArea').style.display='block';
+
+  // Listen to this counter doc for current token state
+  counterUnsub = db.collection('counters').doc(activeCounterId).onSnapshot(snap => {
+    const c = snap.data();
+    renderCurrentToken(c);
+  });
+  // Listen to waiting queue
+  listenWaiting();
+}
+
+function renderCurrentToken(c){
+  const disp = document.getElementById('currentTokenDisplay');
+  const svcDisp = document.getElementById('currentServiceDisplay');
+  const callBtn = document.getElementById('callNextBtn');
+  const recallBtn = document.getElementById('recallBtn');
+  const serveBtn = document.getElementById('serveBtn');
+  const completeBtn = document.getElementById('completeBtn');
+  const noshowBtn = document.getElementById('noshowBtn');
+
+  if(c.currentToken){
+    disp.textContent = c.currentToken;
+    svcDisp.textContent = `${c.currentServiceName||''} — ${c.status}`;
+    recallBtn.disabled = false;
+    serveBtn.disabled = (c.status !== 'called');
+    completeBtn.disabled = (c.status !== 'serving');
+    noshowBtn.disabled = (c.status === 'serving' || c.status === 'idle');
+    callBtn.disabled = (c.status === 'called' || c.status === 'serving');
+  } else {
+    disp.textContent = '—';
+    svcDisp.textContent = 'No token called';
+    recallBtn.disabled = true;
+    serveBtn.disabled = true;
+    completeBtn.disabled = true;
+    noshowBtn.disabled = true;
+    callBtn.disabled = false;
+  }
+}
+
+function listenWaiting(){
+  if(waitingUnsub) waitingUnsub();
+  waitingUnsub = db.collection('tokens').where('status','==','waiting').orderBy('createdAt','asc').onSnapshot(snap => {
+    const tokens = snap.docs.map(d=>({id:d.id,...d.data()}));
+    document.getElementById('waitingList').innerHTML = tokens.map(t => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--line);">
+        <div><strong>${t.prefix}${t.number}</strong> <span class="muted" style="font-size:13px;">${escapeHtml(t.serviceName)}</span></div>
+        <span class="badge badge-waiting">waiting</span>
+      </div>`).join('') || '<p class="muted">Queue is empty.</p>';
+  });
+}
+
+async function callNext(){
+  const filterId = document.getElementById('serviceFilter').value;
+  let query = db.collection('tokens').where('status','==','waiting');
+  if(filterId){
+    const svc = servicesCache.find(s=>s.id===filterId);
+    query = query.where('service','==',filterId);
+  }
+  query = query.orderBy('createdAt','asc').limit(1);
+  const snap = await query.get();
+  if(snap.empty){ showToast('No waiting tokens'); return; }
+  const doc = snap.docs[0];
+  const t = doc.data();
+  const batch = db.batch();
+  batch.update(doc.ref, {
+    status:'called', counterId: activeCounterId, counterName: activeCounterName,
+    calledAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+  batch.update(db.collection('counters').doc(activeCounterId), {
+    currentToken: t.prefix+t.number, currentTokenId: doc.id, currentServiceName: t.serviceName,
+    status:'called'
+  });
+  await batch.commit();
+  showToast(`Called ${t.prefix}${t.number}`);
+}
+
+async function recall(){
+  await db.collection('counters').doc(activeCounterId).update({ recallPing: firebase.firestore.FieldValue.serverTimestamp() });
+  showToast('Recalled — announced on display');
+}
+
+async function markServing(){
+  const cSnap = await db.collection('counters').doc(activeCounterId).get();
+  const c = cSnap.data();
+  if(!c.currentTokenId) return;
+  await db.collection('tokens').doc(c.currentTokenId).update({status:'serving', servingAt: firebase.firestore.FieldValue.serverTimestamp()});
+  await db.collection('counters').doc(activeCounterId).update({status:'serving'});
+}
+
+async function completeToken(){
+  const cSnap = await db.collection('counters').doc(activeCounterId).get();
+  const c = cSnap.data();
+  if(!c.currentTokenId) return;
+  await db.collection('tokens').doc(c.currentTokenId).update({status:'completed', completedAt: firebase.firestore.FieldValue.serverTimestamp()});
+  await db.collection('counters').doc(activeCounterId).update({status:'idle', currentToken:null, currentTokenId:null, currentServiceName:null});
+}
+
+async function noShow(){
+  const cSnap = await db.collection('counters').doc(activeCounterId).get();
+  const c = cSnap.data();
+  if(!c.currentTokenId) return;
+  await db.collection('tokens').doc(c.currentTokenId).update({status:'noshow', completedAt: firebase.firestore.FieldValue.serverTimestamp()});
+  await db.collection('counters').doc(activeCounterId).update({status:'idle', currentToken:null, currentTokenId:null, currentServiceName:null});
+}
+
+function endSession(){
+  if(waitingUnsub) waitingUnsub();
+  if(counterUnsub) counterUnsub();
+  document.getElementById('sessionArea').style.display='none';
+  document.getElementById('pickerCard').style.display='block';
+}
+
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none', 2200); }
+function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+</script>
+</body>
+</html>

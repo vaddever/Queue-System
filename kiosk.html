@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Take a Token</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  body{background:linear-gradient(160deg,var(--navy),var(--navy-2));min-height:100vh;color:#fff;}
+  .kwrap{max-width:640px;margin:0 auto;padding:40px 20px;min-height:100vh;display:flex;flex-direction:column;}
+  .khead{text-align:center;margin-bottom:30px;}
+  .khead h1{font-size:28px;margin-bottom:6px;}
+  .khead p{color:#a7f3d0;font-size:16px;}
+  .khead p.dv{color:#a7f3d0;}
+  .svc-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;flex:1;}
+  .svc-btn{background:rgba(255,255,255,.08);border:2px solid rgba(255,255,255,.15);border-radius:18px;padding:26px 16px;color:#fff;text-align:center;min-height:130px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;}
+  .svc-btn:hover{background:rgba(255,255,255,.16);border-color:var(--teal);}
+  .svc-btn .svc-en{font-size:19px;font-weight:700;}
+  .svc-btn .svc-dv{font-size:16px;color:#a7f3d0;}
+  .ticket{display:none;background:#fff;color:var(--navy);border-radius:22px;padding:36px 26px;text-align:center;margin-top:20px;}
+  .ticket .tnum{font-size:64px;font-weight:800;margin:10px 0;}
+  .ticket .tsvc{font-size:16px;color:var(--muted);}
+  .ticket .twait{margin-top:16px;font-size:14px;color:var(--muted);}
+  .newBtn{margin-top:24px;}
+</style>
+</head>
+<body>
+<div class="kwrap">
+  <div class="khead" id="headBox">
+    <h1 id="orgTitle">Welcome</h1>
+    <p>Please select a service to get your token</p>
+    <p class="dv" id="selectDv">ޚިދުމަތެއް އިޚްތިޔާރު ކުރައްވާ</p>
+  </div>
+
+  <div class="svc-grid" id="svcGrid"><p class="center" style="grid-column:1/-1;">Loading services…</p></div>
+
+  <div class="ticket" id="ticketBox">
+    <div class="muted" style="font-size:14px;">YOUR TOKEN</div>
+    <div class="tnum" id="ticketNum">A01</div>
+    <div class="tsvc" id="ticketSvc"></div>
+    <div class="twait" id="ticketWait"></div>
+    <button class="btn btn-primary btn-lg newBtn" onclick="reset()">Get Another Token</button>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script>
+db.collection('config').doc('settings').get().then(snap=>{
+  if(snap.exists && snap.data().orgName) document.getElementById('orgTitle').textContent = snap.data().orgName;
+});
+
+let services = [];
+db.collection('services').where('active','==',true).get().then(snap=>{
+  services = snap.docs.map(d=>({id:d.id,...d.data()}));
+  document.getElementById('svcGrid').innerHTML = services.map(s => `
+    <button class="svc-btn" onclick="takeToken('${s.id}')">
+      <div class="svc-en">${escapeHtml(s.nameEn)}</div>
+      <div class="svc-dv dv">${escapeHtml(s.nameDv||'')}</div>
+    </button>`).join('') || '<p class="center" style="grid-column:1/-1;">No services available.</p>';
+});
+
+async function takeToken(serviceId){
+  const svc = services.find(s=>s.id===serviceId);
+  const svcRef = db.collection('services').doc(serviceId);
+  const todayStr = new Date().toISOString().slice(0,10);
+
+  const number = await db.runTransaction(async (tx) => {
+    const doc = await tx.get(svcRef);
+    const d = doc.data();
+    let count = (d.lastResetDate === todayStr) ? (d.dailyCount||0) : 0;
+    count += 1;
+    tx.update(svcRef, { dailyCount: count, lastResetDate: todayStr });
+    return count;
+  });
+
+  const numStr = String(number).padStart(2,'0');
+  const tokenRef = await db.collection('tokens').add({
+    prefix: svc.prefix, number: numStr, service: serviceId, serviceName: svc.nameEn,
+    status:'waiting', counterId:null, counterName:null, dateStr: todayStr,
+    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+
+  // Count how many ahead in this service's queue for estimated wait
+  const aheadSnap = await db.collection('tokens').where('status','==','waiting').where('service','==',serviceId).get();
+  const ahead = Math.max(0, aheadSnap.size - 1);
+
+  document.getElementById('headBox').style.display='none';
+  document.getElementById('svcGrid').style.display='none';
+  document.getElementById('ticketBox').style.display='block';
+  document.getElementById('ticketNum').textContent = svc.prefix + numStr;
+  document.getElementById('ticketSvc').textContent = svc.nameEn + (svc.nameDv ? ' / ' + svc.nameDv : '');
+  document.getElementById('ticketWait').textContent = ahead > 0 ? `${ahead} token(s) ahead of you` : `You're next!`;
+}
+
+function reset(){
+  document.getElementById('headBox').style.display='block';
+  document.getElementById('svcGrid').style.display='grid';
+  document.getElementById('ticketBox').style.display='none';
+}
+function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+</script>
+</body>
+</html>

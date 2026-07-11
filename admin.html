@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Queue System</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><span class="dot"></span> Queue System — Admin</div>
+  <nav>
+    <a href="#" class="tab-link active" data-tab="dashboard">Dashboard</a>
+    <a href="#" class="tab-link" data-tab="services">Services</a>
+    <a href="#" class="tab-link" data-tab="counters">Counters</a>
+    <a href="#" class="tab-link" data-tab="staff">Staff</a>
+    <a href="#" class="tab-link" data-tab="tokens">Token Log</a>
+    <a href="#" class="tab-link" data-tab="settings">Settings</a>
+    <a href="display.html" target="_blank">Display ↗</a>
+    <a href="kiosk.html" target="_blank">Kiosk ↗</a>
+    <button id="logoutBtn">Log Out</button>
+  </nav>
+</div>
+<div class="wrap">
+  <div class="muted" id="whoami" style="margin-bottom:16px;font-size:13px;"></div>
+
+  <!-- DASHBOARD -->
+  <div class="tab-panel" id="tab-dashboard">
+    <div class="grid g4" style="margin-bottom:20px;">
+      <div class="card"><h3>Waiting Now</h3><div class="stat" id="statWaiting">0</div><div class="stat-label">Across all services</div></div>
+      <div class="card"><h3>Served Today</h3><div class="stat" id="statServed">0</div><div class="stat-label">Completed tokens</div></div>
+      <div class="card"><h3>Active Counters</h3><div class="stat" id="statCounters">0</div><div class="stat-label">Currently open</div></div>
+      <div class="card"><h3>Avg Wait</h3><div class="stat" id="statWait">–</div><div class="stat-label">Minutes, today</div></div>
+    </div>
+    <div class="card">
+      <h3>Counter Status</h3>
+      <div id="counterStatusList"><div class="spinner"></div></div>
+    </div>
+  </div>
+
+  <!-- SERVICES -->
+  <div class="tab-panel" id="tab-services" style="display:none;">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h3 style="margin:0;">Services</h3>
+        <button class="btn btn-primary" onclick="openServiceModal()">+ Add Service</button>
+      </div>
+      <table>
+        <thead><tr><th>Prefix</th><th>Name (EN)</th><th>Name (DV)</th><th>Status</th><th></th></tr></thead>
+        <tbody id="servicesTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- COUNTERS -->
+  <div class="tab-panel" id="tab-counters" style="display:none;">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h3 style="margin:0;">Counters</h3>
+        <button class="btn btn-primary" onclick="openCounterModal()">+ Add Counter</button>
+      </div>
+      <table>
+        <thead><tr><th>Name</th><th>Status</th><th>Now Serving</th><th>Active</th><th></th></tr></thead>
+        <tbody id="countersTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- STAFF -->
+  <div class="tab-panel" id="tab-staff" style="display:none;">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h3 style="margin:0;">Staff Accounts</h3>
+        <button class="btn btn-primary" onclick="openStaffModal()">+ Add Staff</button>
+      </div>
+      <table>
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Default Counter</th><th></th></tr></thead>
+        <tbody id="staffTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TOKENS LOG -->
+  <div class="tab-panel" id="tab-tokens" style="display:none;">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h3 style="margin:0;">Today's Tokens</h3>
+        <button class="btn btn-outline" onclick="loadTokensLog()">Refresh</button>
+      </div>
+      <table>
+        <thead><tr><th>Token</th><th>Service</th><th>Status</th><th>Counter</th><th>Created</th><th>Completed</th></tr></thead>
+        <tbody id="tokensTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="tab-panel" id="tab-settings" style="display:none;">
+    <div class="card" style="max-width:500px;">
+      <h3>Organisation Settings</h3>
+      <div class="field"><label>Organisation Name (EN)</label><input id="orgName"></div>
+      <div class="field"><label>Organisation Name (DV)</label><input id="orgNameDv" class="dv"></div>
+      <div class="field"><label>Daily Reset Time (MVT)</label><input id="resetTime" type="time" value="00:00"></div>
+      <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+    </div>
+  </div>
+</div>
+
+<!-- Service Modal -->
+<div class="modal-bg" id="serviceModal">
+  <div class="modal">
+    <h3 id="serviceModalTitle">Add Service</h3>
+    <div class="field"><label>Prefix (e.g. A, B, GEN)</label><input id="svcPrefix" maxlength="4" style="text-transform:uppercase;"></div>
+    <div class="field"><label>Name (English)</label><input id="svcNameEn"></div>
+    <div class="field"><label>Name (Dhivehi)</label><input id="svcNameDv" class="dv"></div>
+    <div class="row">
+      <button class="btn btn-outline" onclick="closeModal('serviceModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveService()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Counter Modal -->
+<div class="modal-bg" id="counterModal">
+  <div class="modal">
+    <h3 id="counterModalTitle">Add Counter</h3>
+    <div class="field"><label>Counter Name</label><input id="ctrName" placeholder="Counter 1"></div>
+    <div class="row">
+      <button class="btn btn-outline" onclick="closeModal('counterModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCounter()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Staff Modal -->
+<div class="modal-bg" id="staffModal">
+  <div class="modal">
+    <h3>Add Staff Account</h3>
+    <div class="field"><label>Full Name</label><input id="stfName"></div>
+    <div class="field"><label>Email</label><input id="stfEmail" type="email"></div>
+    <div class="field"><label>Temporary Password</label><input id="stfPassword" type="text" placeholder="min 6 characters"></div>
+    <div class="field"><label>Role</label>
+      <select id="stfRole"><option value="staff">Staff</option><option value="admin">Admin</option></select>
+    </div>
+    <div class="field"><label>Default Counter (optional)</label>
+      <select id="stfCounter"><option value="">— none —</option></select>
+    </div>
+    <div class="row">
+      <button class="btn btn-outline" onclick="closeModal('staffModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveStaff()">Create Account</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script>
+let currentUser = null;
+let servicesCache = [], countersCache = [];
+
+// ---- Auth guard ----
+auth.onAuthStateChanged(async (user) => {
+  if (!user) { window.location.href = 'login.html'; return; }
+  const snap = await db.collection('users').doc(user.uid).get();
+  if (!snap.exists || snap.data().role !== 'admin') {
+    alert('Admin access only.');
+    window.location.href = snap.exists ? 'counter.html' : 'login.html';
+    return;
+  }
+  currentUser = { uid: user.uid, ...snap.data() };
+  document.getElementById('whoami').textContent = `Signed in as ${currentUser.name || currentUser.email} (Admin)`;
+  initAll();
+});
+document.getElementById('logoutBtn').addEventListener('click', () => auth.signOut().then(()=>window.location.href='login.html'));
+
+// ---- Tabs ----
+document.querySelectorAll('.tab-link').forEach(link => {
+  link.addEventListener('click', (e) => {
+    e.preventDefault();
+    document.querySelectorAll('.tab-link').forEach(l=>l.classList.remove('active'));
+    link.classList.add('active');
+    document.querySelectorAll('.tab-panel').forEach(p=>p.style.display='none');
+    document.getElementById('tab-'+link.dataset.tab).style.display='block';
+    if(link.dataset.tab==='tokens') loadTokensLog();
+  });
+});
+
+function initAll(){
+  listenServices();
+  listenCounters();
+  listenStaff();
+  listenDashboard();
+  loadSettings();
+}
+
+// ---- SERVICES ----
+function listenServices(){
+  db.collection('services').orderBy('prefix').onSnapshot(snap => {
+    servicesCache = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    renderServices();
+  });
+}
+function renderServices(){
+  document.getElementById('servicesTable').innerHTML = servicesCache.map(s => `
+    <tr>
+      <td><strong>${s.prefix}</strong></td>
+      <td>${escapeHtml(s.nameEn)}</td>
+      <td class="dv">${escapeHtml(s.nameDv||'')}</td>
+      <td><span class="badge ${s.active?'badge-serving':'badge-completed'}">${s.active?'Active':'Disabled'}</span></td>
+      <td>
+        <button class="btn btn-outline" style="padding:6px 12px;font-size:13px;" onclick="editService('${s.id}')">Edit</button>
+        <button class="btn btn-outline" style="padding:6px 12px;font-size:13px;" onclick="toggleService('${s.id}', ${!s.active})">${s.active?'Disable':'Enable'}</button>
+      </td>
+    </tr>`).join('') || `<tr><td colspan="5" class="muted center">No services yet.</td></tr>`;
+}
+let editingServiceId = null;
+function openServiceModal(){ editingServiceId=null; document.getElementById('serviceModalTitle').textContent='Add Service';
+  ['svcPrefix','svcNameEn','svcNameDv'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('serviceModal').classList.add('open'); }
+function editService(id){
+  const s = servicesCache.find(x=>x.id===id); if(!s) return;
+  editingServiceId = id;
+  document.getElementById('serviceModalTitle').textContent='Edit Service';
+  document.getElementById('svcPrefix').value = s.prefix;
+  document.getElementById('svcNameEn').value = s.nameEn;
+  document.getElementById('svcNameDv').value = s.nameDv||'';
+  document.getElementById('serviceModal').classList.add('open');
+}
+async function saveService(){
+  const prefix = document.getElementById('svcPrefix').value.trim().toUpperCase();
+  const nameEn = document.getElementById('svcNameEn').value.trim();
+  const nameDv = document.getElementById('svcNameDv').value.trim();
+  if(!prefix || !nameEn){ showToast('Prefix and English name are required'); return; }
+  const data = { prefix, nameEn, nameDv, active:true, dailyCount:0, lastResetDate:'' };
+  if(editingServiceId){
+    await db.collection('services').doc(editingServiceId).update({prefix,nameEn,nameDv});
+  } else {
+    await db.collection('services').add(data);
+  }
+  closeModal('serviceModal');
+  showToast('Service saved');
+}
+async function toggleService(id, active){ await db.collection('services').doc(id).update({active}); }
+
+// ---- COUNTERS ----
+function listenCounters(){
+  db.collection('counters').orderBy('name').onSnapshot(snap => {
+    countersCache = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    renderCounters();
+    renderCounterStatus();
+    populateCounterSelect();
+  });
+}
+function renderCounters(){
+  document.getElementById('countersTable').innerHTML = countersCache.map(c => `
+    <tr>
+      <td><strong>${escapeHtml(c.name)}</strong></td>
+      <td><span class="badge badge-${c.status||'completed'}">${c.status||'idle'}</span></td>
+      <td>${c.currentToken || '—'}</td>
+      <td>${c.active ? '✅' : '⛔'}</td>
+      <td>
+        <button class="btn btn-outline" style="padding:6px 12px;font-size:13px;" onclick="toggleCounter('${c.id}', ${!c.active})">${c.active?'Deactivate':'Activate'}</button>
+      </td>
+    </tr>`).join('') || `<tr><td colspan="5" class="muted center">No counters yet.</td></tr>`;
+}
+function openCounterModal(){ document.getElementById('ctrName').value=''; document.getElementById('counterModal').classList.add('open'); }
+async function saveCounter(){
+  const name = document.getElementById('ctrName').value.trim();
+  if(!name){ showToast('Enter a counter name'); return; }
+  await db.collection('counters').add({name, active:true, status:'idle', currentToken:null, currentService:null});
+  closeModal('counterModal');
+  showToast('Counter added');
+}
+async function toggleCounter(id, active){ await db.collection('counters').doc(id).update({active}); }
+
+// ---- STAFF ----
+function listenStaff(){
+  db.collection('users').orderBy('name').onSnapshot(snap => {
+    const staff = snap.docs.map(d=>({id:d.id,...d.data()}));
+    document.getElementById('staffTable').innerHTML = staff.map(s => `
+      <tr>
+        <td>${escapeHtml(s.name||'')}</td>
+        <td>${escapeHtml(s.email||'')}</td>
+        <td><span class="badge ${s.role==='admin'?'badge-serving':'badge-waiting'}">${s.role}</span></td>
+        <td>${escapeHtml(s.counterName||'—')}</td>
+        <td><button class="btn btn-outline" style="padding:6px 12px;font-size:13px;" onclick="removeStaffProfile('${s.id}')">Remove</button></td>
+      </tr>`).join('') || `<tr><td colspan="5" class="muted center">No staff yet.</td></tr>`;
+  });
+}
+function populateCounterSelect(){
+  const sel = document.getElementById('stfCounter');
+  sel.innerHTML = '<option value="">— none —</option>' + countersCache.map(c=>`<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+}
+function openStaffModal(){
+  ['stfName','stfEmail','stfPassword'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('stfRole').value='staff';
+  document.getElementById('staffModal').classList.add('open');
+}
+async function saveStaff(){
+  const name = document.getElementById('stfName').value.trim();
+  const email = document.getElementById('stfEmail').value.trim();
+  const password = document.getElementById('stfPassword').value;
+  const role = document.getElementById('stfRole').value;
+  const counterId = document.getElementById('stfCounter').value;
+  const counterName = counterId ? countersCache.find(c=>c.id===counterId)?.name : '';
+  if(!name || !email || password.length < 6){ showToast('Fill all fields (password min 6 chars)'); return; }
+
+  // Use a SECONDARY firebase app instance so creating the user doesn't
+  // sign the admin out of their current session.
+  const secondaryApp = firebase.apps.find(a=>a.name==='Secondary') || firebase.initializeApp(firebaseConfig, 'Secondary');
+  const secondaryAuth = secondaryApp.auth();
+  try{
+    const cred = await secondaryAuth.createUserWithEmailAndPassword(email, password);
+    await db.collection('users').doc(cred.user.uid).set({
+      name, email, role, counterId: counterId||null, counterName: counterName||null, createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await secondaryAuth.signOut();
+    closeModal('staffModal');
+    showToast('Staff account created');
+  }catch(err){
+    showToast(err.message);
+  }
+}
+async function removeStaffProfile(id){
+  if(!confirm('Remove this staff profile? (Their login account itself must be deleted separately in Firebase Console)')) return;
+  await db.collection('users').doc(id).delete();
+}
+
+// ---- DASHBOARD ----
+function listenDashboard(){
+  const todayStr = new Date().toISOString().slice(0,10);
+  db.collection('tokens').where('dateStr','==',todayStr).onSnapshot(snap => {
+    const tokens = snap.docs.map(d=>d.data());
+    const waiting = tokens.filter(t=>t.status==='waiting').length;
+    const completed = tokens.filter(t=>t.status==='completed');
+    document.getElementById('statWaiting').textContent = waiting;
+    document.getElementById('statServed').textContent = completed.length;
+    const waits = completed.filter(t=>t.createdAt && t.completedAt).map(t=> (t.completedAt.toMillis()-t.createdAt.toMillis())/60000);
+    document.getElementById('statWait').textContent = waits.length ? Math.round(waits.reduce((a,b)=>a+b,0)/waits.length) : '–';
+  });
+}
+function renderCounterStatus(){
+  const active = countersCache.filter(c=>c.active);
+  document.getElementById('statCounters').textContent = active.length;
+  document.getElementById('counterStatusList').innerHTML = countersCache.map(c => `
+    <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line);">
+      <span>${escapeHtml(c.name)}</span>
+      <span class="badge badge-${c.status||'completed'}">${c.status||'idle'}</span>
+      <span class="muted">${c.currentToken || '—'}</span>
+    </div>`).join('') || '<p class="muted">No counters configured.</p>';
+}
+
+// ---- TOKENS LOG ----
+async function loadTokensLog(){
+  const todayStr = new Date().toISOString().slice(0,10);
+  const snap = await db.collection('tokens').where('dateStr','==',todayStr).orderBy('createdAt','desc').limit(200).get();
+  document.getElementById('tokensTable').innerHTML = snap.docs.map(d=>{
+    const t = d.data();
+    return `<tr>
+      <td><strong>${t.prefix}${t.number}</strong></td>
+      <td>${escapeHtml(t.serviceName||'')}</td>
+      <td><span class="badge badge-${t.status}">${t.status}</span></td>
+      <td>${escapeHtml(t.counterName||'—')}</td>
+      <td>${fmtTime(t.createdAt)}</td>
+      <td>${fmtTime(t.completedAt)}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="6" class="muted center">No tokens today.</td></tr>`;
+}
+function fmtTime(ts){ if(!ts) return '—'; return ts.toDate().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); }
+
+// ---- SETTINGS ----
+async function loadSettings(){
+  const snap = await db.collection('config').doc('settings').get();
+  if(snap.exists){
+    const d = snap.data();
+    document.getElementById('orgName').value = d.orgName||'';
+    document.getElementById('orgNameDv').value = d.orgNameDv||'';
+    document.getElementById('resetTime').value = d.resetTime||'00:00';
+  }
+}
+async function saveSettings(){
+  await db.collection('config').doc('settings').set({
+    orgName: document.getElementById('orgName').value.trim(),
+    orgNameDv: document.getElementById('orgNameDv').value.trim(),
+    resetTime: document.getElementById('resetTime').value
+  }, {merge:true});
+  showToast('Settings saved');
+}
+
+// ---- Helpers ----
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none', 2500); }
+function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+</script>
+</body>
+</html>
