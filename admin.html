@@ -165,18 +165,18 @@ let servicesCache = [], countersCache = [];
 
 // ---- Auth guard ----
 auth.onAuthStateChanged(async (user) => {
-  if (!user) { window.location.href = 'login.html'; return; }
+  if (!user) { window.location.href = 'index.html'; return; }
   const snap = await db.collection('users').doc(user.uid).get();
   if (!snap.exists || snap.data().role !== 'admin') {
     alert('Admin access only.');
-    window.location.href = snap.exists ? 'counter.html' : 'login.html';
+    window.location.href = snap.exists ? 'counter.html' : 'index.html';
     return;
   }
   currentUser = { uid: user.uid, ...snap.data() };
   document.getElementById('whoami').textContent = `Signed in as ${currentUser.name || currentUser.email} (Admin)`;
   initAll();
 });
-document.getElementById('logoutBtn').addEventListener('click', () => auth.signOut().then(()=>window.location.href='login.html'));
+document.getElementById('logoutBtn').addEventListener('click', () => auth.signOut().then(()=>window.location.href='index.html'));
 
 // ---- Tabs ----
 document.querySelectorAll('.tab-link').forEach(link => {
