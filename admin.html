@@ -16,6 +16,7 @@
     <a href="#" class="tab-link" data-tab="counters">Counters</a>
     <a href="#" class="tab-link" data-tab="staff">Staff</a>
     <a href="#" class="tab-link" data-tab="tokens">Token Log</a>
+    <a href="#" class="tab-link" data-tab="reports">Reports</a>
     <a href="#" class="tab-link" data-tab="settings">Settings</a>
     <a href="display.html" target="_blank">Display ↗</a>
     <a href="kiosk.html" target="_blank">Kiosk ↗</a>
@@ -95,6 +96,43 @@
     </div>
   </div>
 
+  <!-- REPORTS -->
+  <div class="tab-panel" id="tab-reports" style="display:none;">
+    <div class="card" style="margin-bottom:18px;">
+      <div style="display:flex;gap:24px;align-items:flex-end;flex-wrap:wrap;">
+        <div>
+          <label style="font-size:13px;color:var(--muted);font-weight:600;display:block;margin-bottom:6px;">Daily report</label>
+          <input type="date" id="reportDate" style="width:auto;">
+        </div>
+        <div>
+          <label style="font-size:13px;color:var(--muted);font-weight:600;display:block;margin-bottom:6px;">Monthly report</label>
+          <input type="month" id="reportMonth" style="width:auto;">
+        </div>
+        <button class="btn btn-primary" onclick="runReports()">Run Report</button>
+      </div>
+    </div>
+
+    <div class="grid g4" style="margin-bottom:18px;">
+      <div class="card"><h3>Issued</h3><div class="stat" id="repIssued">–</div></div>
+      <div class="card"><h3>Completed</h3><div class="stat" id="repCompleted">–</div></div>
+      <div class="card"><h3>No-Show</h3><div class="stat" id="repNoShow">–</div></div>
+      <div class="card"><h3>Avg Wait (min)</h3><div class="stat" id="repAvgWait">–</div></div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>Day — By Service</h3>
+        <table><thead><tr><th>Service</th><th>Issued</th><th>Completed</th><th>No-Show</th></tr></thead>
+        <tbody id="repServiceTable"><tr><td colspan="4" class="muted center">Run a report to see data.</td></tr></tbody></table>
+      </div>
+      <div class="card">
+        <h3>Month — By Day</h3>
+        <table><thead><tr><th>Date</th><th>Issued</th><th>Completed</th><th>No-Show</th></tr></thead>
+        <tbody id="repMonthTable"><tr><td colspan="4" class="muted center">Run a report to see data.</td></tr></tbody></table>
+      </div>
+    </div>
+  </div>
+
   <!-- SETTINGS -->
   <div class="tab-panel" id="tab-settings" style="display:none;">
     <div class="card" style="max-width:500px;">
@@ -102,6 +140,17 @@
       <div class="field"><label>Organisation Name (EN)</label><input id="orgName"></div>
       <div class="field"><label>Organisation Name (DV)</label><input id="orgNameDv" class="dv"></div>
       <div class="field"><label>Daily Reset Time (MVT)</label><input id="resetTime" type="time" value="00:00"></div>
+      <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+    </div>
+    <div class="card" style="max-width:500px;margin-top:18px;">
+      <h3>Kiosk Display</h3>
+      <label style="display:flex;align-items:center;gap:10px;margin-bottom:12px;font-size:14px;">
+        <input type="checkbox" id="kioskShowServices" style="width:auto;"> Show service buttons (tap to take a token directly)
+      </label>
+      <label style="display:flex;align-items:center;gap:10px;margin-bottom:12px;font-size:14px;">
+        <input type="checkbox" id="kioskShowQR" style="width:auto;"> Show QR code (customers scan with their own phone instead)
+      </label>
+      <p class="muted" style="font-size:12px;margin-bottom:14px;">If you're using the tablet purely as a QR scan point, turn off service buttons and leave QR on.</p>
       <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
     </div>
   </div>
@@ -187,6 +236,7 @@ document.querySelectorAll('.tab-link').forEach(link => {
     document.querySelectorAll('.tab-panel').forEach(p=>p.style.display='none');
     document.getElementById('tab-'+link.dataset.tab).style.display='block';
     if(link.dataset.tab==='tokens') loadTokensLog();
+    if(link.dataset.tab==='reports') initReports();
   });
 });
 
@@ -381,15 +431,91 @@ async function loadSettings(){
     document.getElementById('orgName').value = d.orgName||'';
     document.getElementById('orgNameDv').value = d.orgNameDv||'';
     document.getElementById('resetTime').value = d.resetTime||'00:00';
+    document.getElementById('kioskShowServices').checked = d.kioskShowServices !== false; // default true
+    document.getElementById('kioskShowQR').checked = d.kioskShowQR === true; // default false
+  } else {
+    document.getElementById('kioskShowServices').checked = true;
+    document.getElementById('kioskShowQR').checked = false;
   }
 }
 async function saveSettings(){
   await db.collection('config').doc('settings').set({
     orgName: document.getElementById('orgName').value.trim(),
     orgNameDv: document.getElementById('orgNameDv').value.trim(),
-    resetTime: document.getElementById('resetTime').value
+    resetTime: document.getElementById('resetTime').value,
+    kioskShowServices: document.getElementById('kioskShowServices').checked,
+    kioskShowQR: document.getElementById('kioskShowQR').checked
   }, {merge:true});
   showToast('Settings saved');
+}
+
+// ---- REPORTS ----
+function initReports(){
+  const today = new Date();
+  if(!document.getElementById('reportDate').value){
+    document.getElementById('reportDate').value = today.toISOString().slice(0,10);
+  }
+  if(!document.getElementById('reportMonth').value){
+    document.getElementById('reportMonth').value = today.toISOString().slice(0,7);
+  }
+  runReports();
+}
+async function runReports(){
+  const dateStr = document.getElementById('reportDate').value;
+  const monthStr = document.getElementById('reportMonth').value; // YYYY-MM
+
+  // --- Daily ---
+  if(dateStr){
+    const snap = await db.collection('tokens').where('dateStr','==',dateStr).get();
+    const tokens = snap.docs.map(d=>d.data());
+    renderDailyStats(tokens);
+  }
+  // --- Monthly ---
+  if(monthStr){
+    const snap = await db.collection('tokens')
+      .where('dateStr','>=', monthStr+'-01')
+      .where('dateStr','<=', monthStr+'-31')
+      .get();
+    const tokens = snap.docs.map(d=>d.data());
+    renderMonthlyTable(tokens);
+  }
+}
+function renderDailyStats(tokens){
+  const issued = tokens.length;
+  const completed = tokens.filter(t=>t.status==='completed');
+  const noshow = tokens.filter(t=>t.status==='noshow').length;
+  const waits = completed.filter(t=>t.createdAt && t.completedAt).map(t=>(t.completedAt.toMillis()-t.createdAt.toMillis())/60000);
+  document.getElementById('repIssued').textContent = issued;
+  document.getElementById('repCompleted').textContent = completed.length;
+  document.getElementById('repNoShow').textContent = noshow;
+  document.getElementById('repAvgWait').textContent = waits.length ? Math.round(waits.reduce((a,b)=>a+b,0)/waits.length) : '–';
+
+  const byService = {};
+  tokens.forEach(t=>{
+    const key = t.serviceName || 'Unknown';
+    if(!byService[key]) byService[key] = {issued:0, completed:0, noshow:0};
+    byService[key].issued++;
+    if(t.status==='completed') byService[key].completed++;
+    if(t.status==='noshow') byService[key].noshow++;
+  });
+  const rows = Object.entries(byService);
+  document.getElementById('repServiceTable').innerHTML = rows.map(([name,v]) => `
+    <tr><td>${escapeHtml(name)}</td><td>${v.issued}</td><td>${v.completed}</td><td>${v.noshow}</td></tr>
+  `).join('') || `<tr><td colspan="4" class="muted center">No tokens on this date.</td></tr>`;
+}
+function renderMonthlyTable(tokens){
+  const byDay = {};
+  tokens.forEach(t=>{
+    const key = t.dateStr;
+    if(!byDay[key]) byDay[key] = {issued:0, completed:0, noshow:0};
+    byDay[key].issued++;
+    if(t.status==='completed') byDay[key].completed++;
+    if(t.status==='noshow') byDay[key].noshow++;
+  });
+  const rows = Object.entries(byDay).sort((a,b)=> a[0]<b[0]?1:-1);
+  document.getElementById('repMonthTable').innerHTML = rows.map(([date,v]) => `
+    <tr><td>${date}</td><td>${v.issued}</td><td>${v.completed}</td><td>${v.noshow}</td></tr>
+  `).join('') || `<tr><td colspan="4" class="muted center">No tokens this month.</td></tr>`;
 }
 
 // ---- Helpers ----

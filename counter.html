@@ -24,6 +24,11 @@
 
   <!-- Active session -->
   <div id="sessionArea" style="display:none;">
+    <div class="grid g3" style="margin-bottom:18px;">
+      <div class="card"><h3>Waiting Now</h3><div class="stat" id="dashWaiting">0</div></div>
+      <div class="card"><h3>Served By You Today</h3><div class="stat" id="dashServedByMe">0</div></div>
+      <div class="card"><h3>Avg Wait (min)</h3><div class="stat" id="dashAvgWait">–</div></div>
+    </div>
     <div class="grid g2" style="align-items:start;">
       <div class="card">
         <h3>Now Serving — <span id="activeCounterName"></span></h3>
@@ -107,6 +112,22 @@ async function chooseCounter(){
   });
   // Listen to waiting queue
   listenWaiting();
+  listenDashboard();
+}
+
+let dashUnsub=null;
+function listenDashboard(){
+  const todayStr = new Date().toISOString().slice(0,10);
+  if(dashUnsub) dashUnsub();
+  dashUnsub = db.collection('tokens').where('dateStr','==',todayStr).onSnapshot(snap => {
+    const tokens = snap.docs.map(d=>d.data());
+    document.getElementById('dashWaiting').textContent = tokens.filter(t=>t.status==='waiting').length;
+    const mine = tokens.filter(t=>t.counterName===activeCounterName && t.status==='completed');
+    document.getElementById('dashServedByMe').textContent = mine.length;
+    const waits = tokens.filter(t=>t.status==='completed' && t.createdAt && t.completedAt)
+      .map(t=>(t.completedAt.toMillis()-t.createdAt.toMillis())/60000);
+    document.getElementById('dashAvgWait').textContent = waits.length ? Math.round(waits.reduce((a,b)=>a+b,0)/waits.length) : '–';
+  });
 }
 
 function renderCurrentToken(c){
@@ -206,6 +227,7 @@ async function noShow(){
 function endSession(){
   if(waitingUnsub) waitingUnsub();
   if(counterUnsub) counterUnsub();
+  if(dashUnsub) dashUnsub();
   document.getElementById('sessionArea').style.display='none';
   document.getElementById('pickerCard').style.display='block';
 }

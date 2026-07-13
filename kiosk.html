@@ -32,7 +32,12 @@
     <p class="dv" id="selectDv">ޚިދުމަތެއް އިޚްތިޔާރު ކުރައްވާ</p>
   </div>
 
-  <div class="svc-grid" id="svcGrid"><p class="center" style="grid-column:1/-1;">Loading services…</p></div>
+  <div class="svc-grid" id="svcGrid" style="display:none;"><p class="center" style="grid-column:1/-1;">Loading services…</p></div>
+
+  <div id="qrArea" style="display:none;text-align:center;flex:1;flex-direction:column;align-items:center;justify-content:center;gap:18px;">
+    <div id="qrcode" style="background:#fff;padding:20px;border-radius:18px;"></div>
+    <p style="font-size:16px;color:#a7f3d0;">Scan with your phone camera to take a token</p>
+  </div>
 
   <div class="ticket" id="ticketBox">
     <div class="muted" style="font-size:14px;">YOUR TOKEN</div>
@@ -46,21 +51,44 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="firebase-config.js"></script>
 <script>
+let showServices = true, showQR = false;
+
 db.collection('config').doc('settings').get().then(snap=>{
-  if(snap.exists && snap.data().orgName) document.getElementById('orgTitle').textContent = snap.data().orgName;
+  const d = snap.exists ? snap.data() : {};
+  if(d.orgName) document.getElementById('orgTitle').textContent = d.orgName;
+  showServices = d.kioskShowServices !== false; // default true
+  showQR = d.kioskShowQR === true;              // default false
+  applyDisplayMode();
+  if(showServices) loadServices();
 });
 
+function applyDisplayMode(){
+  document.getElementById('svcGrid').style.display = showServices ? 'grid' : 'none';
+  document.getElementById('qrArea').style.display = showQR ? 'flex' : 'none';
+  if(showQR && !showServices){
+    document.getElementById('headBox').querySelector('p:not(.dv)').textContent = 'Scan the QR code below to take a token on your phone';
+    document.getElementById('selectDv').textContent = 'ތިރީގައިވާ QR ކޯޑް ސްކޭން ކުރައްވާ';
+  }
+  if(showQR){
+    document.getElementById('qrcode').innerHTML = '';
+    new QRCode(document.getElementById('qrcode'), { text: window.location.href, width:220, height:220, colorDark:'#0f2340' });
+  }
+}
+
 let services = [];
-db.collection('services').where('active','==',true).get().then(snap=>{
-  services = snap.docs.map(d=>({id:d.id,...d.data()}));
-  document.getElementById('svcGrid').innerHTML = services.map(s => `
-    <button class="svc-btn" onclick="takeToken('${s.id}')">
-      <div class="svc-en">${escapeHtml(s.nameEn)}</div>
-      <div class="svc-dv dv">${escapeHtml(s.nameDv||'')}</div>
-    </button>`).join('') || '<p class="center" style="grid-column:1/-1;">No services available.</p>';
-});
+function loadServices(){
+  db.collection('services').where('active','==',true).get().then(snap=>{
+    services = snap.docs.map(d=>({id:d.id,...d.data()}));
+    document.getElementById('svcGrid').innerHTML = services.map(s => `
+      <button class="svc-btn" onclick="takeToken('${s.id}')">
+        <div class="svc-en">${escapeHtml(s.nameEn)}</div>
+        <div class="svc-dv dv">${escapeHtml(s.nameDv||'')}</div>
+      </button>`).join('') || '<p class="center" style="grid-column:1/-1;">No services available.</p>';
+  });
+}
 
 async function takeToken(serviceId){
   const svc = services.find(s=>s.id===serviceId);
@@ -89,6 +117,7 @@ async function takeToken(serviceId){
 
   document.getElementById('headBox').style.display='none';
   document.getElementById('svcGrid').style.display='none';
+  document.getElementById('qrArea').style.display='none';
   document.getElementById('ticketBox').style.display='block';
   document.getElementById('ticketNum').textContent = svc.prefix + numStr;
   document.getElementById('ticketSvc').textContent = svc.nameEn + (svc.nameDv ? ' / ' + svc.nameDv : '');
@@ -97,8 +126,8 @@ async function takeToken(serviceId){
 
 function reset(){
   document.getElementById('headBox').style.display='block';
-  document.getElementById('svcGrid').style.display='grid';
   document.getElementById('ticketBox').style.display='none';
+  applyDisplayMode();
 }
 function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 </script>
