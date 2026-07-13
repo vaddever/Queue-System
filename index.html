@@ -21,6 +21,9 @@
     </div>
     <button class="btn btn-navy btn-lg" id="loginBtn">Log In</button>
     <div class="error" id="errorBox"></div>
+    <p style="text-align:center;margin-top:14px;">
+      <a href="#" id="forgotLink" style="color:var(--teal);font-size:13px;font-weight:600;">Forgot password?</a>
+    </p>
     <p class="muted" style="margin-top:18px;font-size:12px;text-align:center;">
       Public screens: <a href="display.html" style="color:var(--teal);font-weight:600;">Display Board</a> ·
       <a href="kiosk.html" style="color:var(--teal);font-weight:600;">Kiosk</a>
@@ -48,6 +51,23 @@ auth.onAuthStateChanged(async (user) => {
 
 document.getElementById('loginBtn').addEventListener('click', login);
 document.getElementById('password').addEventListener('keydown', e => { if(e.key==='Enter') login(); });
+document.getElementById('forgotLink').addEventListener('click', resetPassword);
+
+async function resetPassword(e){
+  e.preventDefault();
+  errorBox.style.display='none';
+  const email = document.getElementById('email').value.trim();
+  if(!email){ showError('Enter your email above first, then click "Forgot password?"'); return; }
+  try{
+    await auth.sendPasswordResetEmail(email);
+    errorBox.style.background = '#dcfce7'; errorBox.style.color = '#166534';
+    errorBox.textContent = `Password reset email sent to ${email}. Check your inbox.`;
+    errorBox.style.display = 'block';
+  }catch(err){
+    errorBox.style.background = '#fee2e2'; errorBox.style.color = '#991b1b';
+    showError(friendlyError(err.code));
+  }
+}
 
 async function login(){
   errorBox.style.display='none';
