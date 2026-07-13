@@ -62,19 +62,32 @@ db.collection('config').doc('settings').get().then(snap=>{
   showServices = d.kioskShowServices !== false; // default true
   showQR = d.kioskShowQR === true;              // default false
   applyDisplayMode();
-  if(showServices) loadServices();
 });
 
 function applyDisplayMode(){
+  const params = new URLSearchParams(window.location.search);
+  const forcedTake = params.get('take') === '1';
+
+  if(forcedTake){
+    // Customer arrived here by scanning the QR code — always show service buttons.
+    document.getElementById('svcGrid').style.display = 'grid';
+    document.getElementById('qrArea').style.display = 'none';
+    loadServices();
+    return;
+  }
+
   document.getElementById('svcGrid').style.display = showServices ? 'grid' : 'none';
   document.getElementById('qrArea').style.display = showQR ? 'flex' : 'none';
+  if(showServices) loadServices();
   if(showQR && !showServices){
     document.getElementById('headBox').querySelector('p:not(.dv)').textContent = 'Scan the QR code below to take a token on your phone';
     document.getElementById('selectDv').textContent = 'ތިރީގައިވާ QR ކޯޑް ސްކޭން ކުރައްވާ';
   }
   if(showQR){
     document.getElementById('qrcode').innerHTML = '';
-    new QRCode(document.getElementById('qrcode'), { text: window.location.href, width:220, height:220, colorDark:'#0f2340' });
+    // Link includes ?take=1 so the customer's phone always shows the service buttons, never the QR again.
+    const qrTargetUrl = window.location.origin + window.location.pathname + '?take=1';
+    new QRCode(document.getElementById('qrcode'), { text: qrTargetUrl, width:220, height:220, colorDark:'#0f2340' });
   }
 }
 

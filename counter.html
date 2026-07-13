@@ -29,6 +29,14 @@
       <div class="card"><h3>Served By You Today</h3><div class="stat" id="dashServedByMe">0</div></div>
       <div class="card"><h3>Avg Wait (min)</h3><div class="stat" id="dashAvgWait">–</div></div>
     </div>
+    <div class="card" id="monthlyPerfCard" style="display:none;margin-bottom:18px;">
+      <h3>Your Performance This Month</h3>
+      <div class="grid g3">
+        <div><div class="stat" id="mpHandled">0</div><div class="stat-label">Tokens Handled</div></div>
+        <div><div class="stat" id="mpCompleted">0</div><div class="stat-label">Completed</div></div>
+        <div><div class="stat" id="mpAvgWait">–</div><div class="stat-label">Avg Wait (min)</div></div>
+      </div>
+    </div>
     <div class="grid g2" style="align-items:start;">
       <div class="card">
         <h3>Now Serving — <span id="activeCounterName"></span></h3>
@@ -113,6 +121,27 @@ async function chooseCounter(){
   // Listen to waiting queue
   listenWaiting();
   listenDashboard();
+  loadMonthlyPerformance();
+}
+
+async function loadMonthlyPerformance(){
+  const settingsSnap = await db.collection('config').doc('settings').get();
+  if(!settingsSnap.exists || settingsSnap.data().showStaffMonthlyDashboard !== true) return;
+
+  const monthStr = new Date().toISOString().slice(0,7); // YYYY-MM
+  const snap = await db.collection('tokens')
+    .where('dateStr','>=', monthStr+'-01')
+    .where('dateStr','<=', monthStr+'-31')
+    .where('calledByUid','==', currentUser.uid)
+    .get();
+  const tokens = snap.docs.map(d=>d.data());
+  const completed = tokens.filter(t=>t.status==='completed');
+  const waits = completed.filter(t=>t.calledAt && t.completedAt).map(t=>(t.completedAt.toMillis()-t.calledAt.toMillis())/60000);
+
+  document.getElementById('mpHandled').textContent = tokens.length;
+  document.getElementById('mpCompleted').textContent = completed.length;
+  document.getElementById('mpAvgWait').textContent = waits.length ? Math.round(waits.reduce((a,b)=>a+b,0)/waits.length) : '–';
+  document.getElementById('monthlyPerfCard').style.display = 'block';
 }
 
 let dashUnsub=null;
@@ -185,7 +214,8 @@ async function callNext(){
   const batch = db.batch();
   batch.update(doc.ref, {
     status:'called', counterId: activeCounterId, counterName: activeCounterName,
-    calledAt: firebase.firestore.FieldValue.serverTimestamp()
+    calledAt: firebase.firestore.FieldValue.serverTimestamp(),
+    calledByUid: currentUser.uid, calledByName: currentUser.name || currentUser.email
   });
   batch.update(db.collection('counters').doc(activeCounterId), {
     currentToken: t.prefix+t.number, currentTokenId: doc.id, currentServiceName: t.serviceName,

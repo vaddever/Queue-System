@@ -131,6 +131,14 @@
         <tbody id="repMonthTable"><tr><td colspan="4" class="muted center">Run a report to see data.</td></tr></tbody></table>
       </div>
     </div>
+
+    <div class="card" style="margin-top:18px;">
+      <h3>Staff Performance — Selected Month</h3>
+      <table>
+        <thead><tr><th>Staff</th><th>Tokens Handled</th><th>Completed</th><th>No-Show</th><th>Avg Wait (min)</th></tr></thead>
+        <tbody id="repStaffTable"><tr><td colspan="5" class="muted center">Run a report to see data.</td></tr></tbody></table>
+      </table>
+    </div>
   </div>
 
   <!-- SETTINGS -->
@@ -151,6 +159,13 @@
         <input type="checkbox" id="kioskShowQR" style="width:auto;"> Show QR code (customers scan with their own phone instead)
       </label>
       <p class="muted" style="font-size:12px;margin-bottom:14px;">If you're using the tablet purely as a QR scan point, turn off service buttons and leave QR on.</p>
+      <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
+    </div>
+    <div class="card" style="max-width:500px;margin-top:18px;">
+      <h3>Staff View</h3>
+      <label style="display:flex;align-items:center;gap:10px;margin-bottom:12px;font-size:14px;">
+        <input type="checkbox" id="showStaffMonthlyDashboard" style="width:auto;"> Show staff their own monthly performance dashboard
+      </label>
       <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
     </div>
   </div>
@@ -433,9 +448,11 @@ async function loadSettings(){
     document.getElementById('resetTime').value = d.resetTime||'00:00';
     document.getElementById('kioskShowServices').checked = d.kioskShowServices !== false; // default true
     document.getElementById('kioskShowQR').checked = d.kioskShowQR === true; // default false
+    document.getElementById('showStaffMonthlyDashboard').checked = d.showStaffMonthlyDashboard === true;
   } else {
     document.getElementById('kioskShowServices').checked = true;
     document.getElementById('kioskShowQR').checked = false;
+    document.getElementById('showStaffMonthlyDashboard').checked = false;
   }
 }
 async function saveSettings(){
@@ -444,7 +461,8 @@ async function saveSettings(){
     orgNameDv: document.getElementById('orgNameDv').value.trim(),
     resetTime: document.getElementById('resetTime').value,
     kioskShowServices: document.getElementById('kioskShowServices').checked,
-    kioskShowQR: document.getElementById('kioskShowQR').checked
+    kioskShowQR: document.getElementById('kioskShowQR').checked,
+    showStaffMonthlyDashboard: document.getElementById('showStaffMonthlyDashboard').checked
   }, {merge:true});
   showToast('Settings saved');
 }
@@ -478,7 +496,27 @@ async function runReports(){
       .get();
     const tokens = snap.docs.map(d=>d.data());
     renderMonthlyTable(tokens);
+    renderStaffTable(tokens);
   }
+}
+function renderStaffTable(tokens){
+  const byStaff = {};
+  tokens.forEach(t=>{
+    if(!t.calledByName) return; // token never picked up by any staff
+    const key = t.calledByName;
+    if(!byStaff[key]) byStaff[key] = {handled:0, completed:0, noshow:0, waits:[]};
+    byStaff[key].handled++;
+    if(t.status==='completed'){
+      byStaff[key].completed++;
+      if(t.calledAt && t.completedAt) byStaff[key].waits.push((t.completedAt.toMillis()-t.calledAt.toMillis())/60000);
+    }
+    if(t.status==='noshow') byStaff[key].noshow++;
+  });
+  const rows = Object.entries(byStaff).sort((a,b)=> b[1].handled - a[1].handled);
+  document.getElementById('repStaffTable').innerHTML = rows.map(([name,v]) => `
+    <tr><td>${escapeHtml(name)}</td><td>${v.handled}</td><td>${v.completed}</td><td>${v.noshow}</td>
+    <td>${v.waits.length ? Math.round(v.waits.reduce((a,b)=>a+b,0)/v.waits.length) : '–'}</td></tr>
+  `).join('') || `<tr><td colspan="5" class="muted center">No staff activity this month.</td></tr>`;
 }
 function renderDailyStats(tokens){
   const issued = tokens.length;
