@@ -31,29 +31,20 @@
   <h1 id="orgTitle">Queue Display</h1>
   <div class="clock" id="clock">--:--:--</div>
 </div>
-  <div class="dwrap">
+<div class="dwrap">
   <div class="counters-col" id="countersCol"><p class="muted">Loading…</p></div>
   <div class="side-col">
     <h2>Waiting Queue</h2>
     <div id="waitingCol"></div>
-    <div class="qr-box">
-      <div id="qrcode"></div>
-      <p>Scan to take a token</p>
-    </div>
   </div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="firebase-config.js"></script>
 <script>
 setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-GB'); }, 1000);
-
-// QR points to the kiosk page — update this to your deployed kiosk URL
-const kioskUrl = window.location.href.replace('display.html','kiosk.html');
-new QRCode(document.getElementById('qrcode'), { text: kioskUrl, width:150, height:150, colorDark:'#0f2340' });
 
 db.collection('config').doc('settings').get().then(snap=>{
   if(snap.exists && snap.data().orgName) document.getElementById('orgTitle').textContent = snap.data().orgName + ' — Now Serving';
